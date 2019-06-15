@@ -1,6 +1,7 @@
 import requests
 import time
 import json
+from logger import Logger
 from accountDetails import accountDetails
 from constants import *
 
@@ -12,6 +13,7 @@ class Instabot:
     self.session = requests.Session()
     self.following = {}
     self.sleeptime = 10
+    self.logger = Logger(toPrint = True)
 
   def login(self):
     self.session.headers = {'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36'}
@@ -22,10 +24,10 @@ class Instabot:
     login_req = self.session.post(LOGIN_URL, data=login_data, allow_redirects=True)
     self.session.headers.update({'X-CSRFToken': login_req.cookies['csrftoken']})
     if login_req.status_code == 200:
-      print('Succesfully logged in')
+      self.logger.log('Succesfully logged in')
       self.isLoggedIn = True
     else:
-      print("Couldn't log in")
+      self.logger.log("Couldn't log in")
       self.isLoggedIn = False
     return self.isLoggedIn
 
@@ -38,7 +40,7 @@ class Instabot:
     # check if following data is already present, can be overriden using delete_existing_following param
     existing_following = open('following.txt','r').read()
     if (not delete_existing_following) and existing_following:
-      print('existing following data present in following.txt, use force mode or delete the file')
+      self.logger.log('existing following data present in following.txt, use force mode or delete the file')
       self.following = json.loads(open('following.txt','r').read())
       return
 
@@ -51,7 +53,7 @@ class Instabot:
       queryHash = self.accountDetails.following['queryHash']
       id = self.accountDetails.following['id']
       url = FOLLOWING_URL + '?query_hash={}&variables=%7B%22id%22%3A%22{}%22%2C%22include_reel%22%3Atrue%2C%22fetch_mutual%22%3Afalse%2C%22first%22%3A50%2C%22after%22%3A%22{}%22%7D'.format(queryHash, id, after)
-      print('fetching url={}'.format(url))
+      self.logger.log('fetching url={}'.format(url))
       partialFollowing = self.session.get(url)
       return partialFollowing
 
@@ -61,15 +63,15 @@ class Instabot:
       partialFollowing = get_following_single_page(after)
       if partialFollowing.status_code != 200:
         self.sleeptime = self.sleeptime * 2
-        print('Error: Status {} Increasing sleeptime to {}, could not fetch followings for url = {}'.format(partialFollowing.status_code, self.sleeptime, url))
+        self.logger.log('Error: Status {} Increasing sleeptime to {}, could not fetch followings for url = {}'.format(partialFollowing.status_code, self.sleeptime, url))
       else:
         self.sleeptime = 60
-        print('Successfully fetched following, Decreasing sleeptime to {}'.format(self.sleeptime))
+        self.logger.log('Successfully fetched following, Decreasing sleeptime to {}'.format(self.sleeptime))
         data = partialFollowing.json()['data']['user']['edge_follow']
         after = data['page_info']['end_cursor']
         for d in data['edges']:
           self.following[d['node']['id']] = 1
-      print('sleeping for {}'.format(self.sleeptime))
+      self.logger.log('sleeping for {}'.format(self.sleeptime))
       time.sleep(self.sleeptime)
     open('following.txt','w').write(json.dumps(self.following))
 
@@ -93,20 +95,20 @@ class Instabot:
       unfollow_req = try_unfollow(id)
       if unfollow_req.status_code != 200:
         self.sleeptime = min(self.sleeptime * 2, maxsleeptime)
-        print('Error: Status {} Increasing sleeptime to {}, could not unfollow id = {}'.format(unfollow_req.status_code, self.sleeptime, id))
+        self.logger.log('Error: Status {} Increasing sleeptime to {}, could not unfollow id = {}'.format(unfollow_req.status_code, self.sleeptime, id))
       else:
         self.sleeptime = max(10, self.sleeptime/2)
-        print('Successfully unfollowed id = {}, Decreasing sleeptime to {}'.format(id, self.sleeptime))
+        self.logger.log('Successfully unfollowed id = {}, Decreasing sleeptime to {}'.format(id, self.sleeptime))
         self.following.pop(id)
         open('following.txt','w').write(json.dumps(self.following))
-      print('sleeping for {}'.format(self.sleeptime))
+      self.logger.log('sleeping for {}'.format(self.sleeptime))
       time.sleep(self.sleeptime)
-    print('Exhausted following list')
+    self.logger.log('Exhausted following list')
 
 
   def begin_following(self, seedAccount = 'footballsoccerplanet'):
     if not seedAccount:
-      print('No seed account found')
+      self.logger.log('No seed account found')
       return
     
     if not (self.isLoggedIn or self.login()):
@@ -114,11 +116,11 @@ class Instabot:
 
     accountReq = self.session.get(BASE_URL + '/' + seedAccount)
     if accountReq.status_code != 200:
-      print('Could not retrieve account info, status code: {}'.format(accountReq.status_code))
+      self.logger.log('Could not retrieve account info, status code: {}'.format(accountReq.status_code))
       return
 
     profileId = accountReq.text.split('profilePage_')[1].split('"')[0]
-    print("Found the profile id {}".format(profileId))
+    self.logger.log("Found the profile id {}".format(profileId))
 
   
   
