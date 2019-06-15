@@ -63,7 +63,7 @@ class Instabot:
       partialFollowing = get_following_single_page(after)
       if partialFollowing.status_code != 200:
         self.sleeptime = self.sleeptime * 2
-        self.logger.log('Error: Status {} Increasing sleeptime to {}, could not fetch followings for url = {}'.format(partialFollowing.status_code, self.sleeptime, url))
+        self.logger.log('Error: Status {} Increasing sleeptime to {}, could not fetch followings for url = {}'.format(partialFollowing.status_code, self.sleeptime, partialFollowing.url))
       else:
         self.sleeptime = 60
         self.logger.log('Successfully fetched following, Decreasing sleeptime to {}'.format(self.sleeptime))
@@ -106,13 +106,20 @@ class Instabot:
     self.logger.log('Exhausted following list')
 
 
-  def begin_following(self, seedAccount = 'footballsoccerplanet'):
+  def begin_following(self, seedAccount = 'footballsoccerplanet', maxToFollow = 5):
+    
+    self.sleeptime = 60
+    followedCount = 0
+    after = ''
+
     if not seedAccount:
       self.logger.log('No seed account found')
       return
     
     if not (self.isLoggedIn or self.login()):
       return
+
+    self.logger.log('Will start following accounts from seedAccount {}, maxToFollow {}'.format(seedAccount, maxToFollow))
 
     accountReq = self.session.get(BASE_URL + '/' + seedAccount)
     if accountReq.status_code != 200:
@@ -121,6 +128,60 @@ class Instabot:
 
     profileId = accountReq.text.split('profilePage_')[1].split('"')[0]
     self.logger.log("Found the profile id {}".format(profileId))
+
+    # get followers on single page
+    def get_followers_single_page(after = ''):
+      queryHash = self.accountDetails.follower['queryHash']
+      url = FOLLOWER_URL + '?query_hash={}&variables=%7B%22id%22%3A%22{}%22%2C%22include_reel%22%3Atrue%2C%22fetch_mutual%22%3Afalse%2C%22first%22%3A50%2C%22after%22%3A%22{}%22%7D'.format(queryHash, profileId, after)
+      self.logger.log('fetching url={}'.format(url))
+      partialFollowing = self.session.get(url)
+      return partialFollowing
+
+    while after != None and followedCount < maxToFollow:
+      follower_req = get_followers_single_page(after)
+      if follower_req.status_code != 200:
+        self.sleeptime = self.sleeptime * 2
+        self.logger.log('Error: Status {} Increasing sleeptime to {}, could not fetch followers for url = {}'.format(follower_req.status_code, self.sleeptime, follower_req.url))
+      else:
+        self.sleeptime = 60
+        self.logger.log('Successfully fetched following, Decreasing sleeptime to {}'.format(self.sleeptime))
+        data= follower_req.json()['data']['user']['edge_followed_by']
+        ids = [t['node']['id'] for t in data['edges']]
+        totalfollowed = self.follow_accounts(ids)
+        followedCount = followedCount + totalfollowed
+        after = data['page_info']['end_cursor']
+        self.logger.log('sleeping for {}'.format(self.sleeptime))
+      time.sleep(self.sleeptime)
+
+  # follow accounts given list of ids
+  def follow_accounts(self, data = []):
+
+    self.sleeptime = 10
+    maxsleeptime = 160
+    
+    if not (self.isLoggedIn or self.login()):
+      return
+
+    self.logger.log('Trying to follow_accounts, total accounts given {}'.format(len(data)))
+    for id in data:
+      if self.following.get(id, 0):
+        self.logger.log('Id {} is already present in following list, skipping this id')
+      else:  
+        follow_req = self.session.post(FOLLOW_ACCOUNT.format(id), allow_redirects = True)
+        if follow_req.status_code != 200:
+          self.sleeptime = min(self.sleeptime * 2, maxsleeptime)
+          self.logger.log('Error: Status {} Increasing sleeptime to {}, could not follow id = {}'.format(follow_req.status_code, self.sleeptime, id))
+        else:
+          self.sleeptime = max(10, self.sleeptime/2)
+          self.logger.log('Successfully followed id = {}, Decreasing sleeptime to {}'.format(id, self.sleeptime))
+          self.following[id] = 1
+          open('following.txt','w').write(json.dumps(self.following))
+        self.logger.log('sleeping for {}'.format(self.sleeptime))
+        time.sleep(self.sleeptime)
+    self.logger.log('Successfuly followed given account, total length {}'.format(len(data)))
+    return len(data)
+
+
 
   
   
