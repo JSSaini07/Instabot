@@ -1,6 +1,8 @@
 import requests
 import time
 import json
+from datetime import datetime
+from dateutil import tz
 from logger import Logger
 from accountDetails import accountDetails
 from constants import *
@@ -14,6 +16,7 @@ class Instabot:
     self.following = {}
     self.sleeptime = 10
     self.logger = Logger(toPrint = True)
+    self.logger.log('------------ Starting up ------------')
 
   def login(self):
     self.session.headers = {'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36'}
@@ -32,17 +35,13 @@ class Instabot:
     return self.isLoggedIn
 
 
-  def fetch_following(self, delete_existing_following = False):
-
-    self.following = {}
-    self.sleeptime = 60
-
-    # check if following data is already present, can be overriden using delete_existing_following param
-    existing_following = open('following.txt','r').read()
-    if (not delete_existing_following) and existing_following:
-      self.logger.log('existing following data present in following.txt, use force mode or delete the file')
+  def fetch_following(self):
+    try:
       self.following = json.loads(open('following.txt','r').read())
-      return
+    except:
+      self.following = {}
+
+    self.sleeptime = 60
 
     # check for login
     if not (self.isLoggedIn or self.login()):
@@ -70,13 +69,14 @@ class Instabot:
         data = partialFollowing.json()['data']['user']['edge_follow']
         after = data['page_info']['end_cursor']
         for d in data['edges']:
-          self.following[d['node']['id']] = 1
+          accountObj = {'time': self.get_current_time(), 'status': 1}
+          self.following[d['node']['id']] =  self.following.get(d['node']['id'], accountObj)
       self.logger.log('sleeping for {}'.format(self.sleeptime))
       time.sleep(self.sleeptime)
     open('following.txt','w').write(json.dumps(self.following))
 
 
-  def unfollow_all(self):
+  def unfollow_accounts(self, timeDiff = 259200):
 
     if not (self.isLoggedIn or self.login()):
       return
@@ -90,8 +90,15 @@ class Instabot:
       unfollow = self.session.post(UNFOLLOW_URL.format(id), allow_redirects=True)
       return unfollow
 
-    followingKeys = [t for t in self.following.keys()]
-    for id in followingKeys:
+    accountsToUnfollow = []
+    currTime = self.parse_string_to_time(self.get_current_time())
+    for id in self.following.keys():
+      followTime = self.parse_string_to_time(self.following[id]['time'])
+      diffTime = currTime - followTime
+      if diffTime.seconds > timeDiff:
+        accountsToUnfollow.append(id)
+
+    for id in accountsToUnfollow:
       unfollow_req = try_unfollow(id)
       if unfollow_req.status_code != 200:
         self.sleeptime = min(self.sleeptime * 2, maxsleeptime)
@@ -99,14 +106,14 @@ class Instabot:
       else:
         self.sleeptime = max(10, self.sleeptime/2)
         self.logger.log('Successfully unfollowed id = {}, Decreasing sleeptime to {}'.format(id, self.sleeptime))
-        self.following.pop(id)
+        self.following[id]['status'] = -1
         open('following.txt','w').write(json.dumps(self.following))
       self.logger.log('sleeping for {}'.format(self.sleeptime))
       time.sleep(self.sleeptime)
     self.logger.log('Exhausted following list')
 
 
-  def begin_following(self, seedAccount = 'footballsoccerplanet', maxToFollow = 5):
+  def begin_following(self, seedAccount = 'footballsoccerplanet', maxToFollow = 100):
     
     self.sleeptime = 60
     followedCount = 0
@@ -174,14 +181,32 @@ class Instabot:
         else:
           self.sleeptime = max(10, self.sleeptime/2)
           self.logger.log('Successfully followed id = {}, Decreasing sleeptime to {}'.format(id, self.sleeptime))
-          self.following[id] = 1
+          self.following[id] = {'time': self.get_current_time(), 'status': 0}
           open('following.txt','w').write(json.dumps(self.following))
         self.logger.log('sleeping for {}'.format(self.sleeptime))
         time.sleep(self.sleeptime)
     self.logger.log('Successfuly followed given account, total length {}'.format(len(data)))
     return len(data)
 
+  def get_current_time(self):
+    tzlocal = tz.tzoffset('IST', 19800)
+    utcnow = datetime.utcnow().replace(tzinfo=tz.tzutc())
+    currTime = str(utcnow.astimezone(tzlocal).strftime("%d/%m/%Y, %I:%M:%S %p"))
+    return currTime
 
+  def parse_string_to_time(self, timestamp):
+    return datetime.strptime(timestamp, "%d/%m/%Y, %I:%M:%S %p")
+
+  def get_followers_following_info(self):
+    followers_following_req = self.session.get(BASE_URL + '/' + self.accountDetails.username)
+    if followers_following_req.status_code != 200:
+      logger.log("Couldn't fetch personal followers following info, status code {}, url {}".format(followers_following_req.status_code, followers_following_req.url))
+      return
+    followers_following_text = followers_following_req.text.lower()
+    followers_following_text = followers_following_text.split('<meta property="og:description" content="')[1]
+    followers = followers_following_text.split(' followers')[0]
+    following = followers_following_text.split('followers, ')[1].split(' following')[0]
+    return {'followers': int(followers), 'following': int(following)}
 
   
   
