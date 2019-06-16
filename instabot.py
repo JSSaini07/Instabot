@@ -206,7 +206,7 @@ class Instabot:
     followers_following_text = followers_following_text.split('<meta property="og:description" content="')[1]
     followers = followers_following_text.split(' followers')[0]
     following = followers_following_text.split('followers, ')[1].split(' following')[0]
-    return {'followers': int(followers), 'following': int(following)}
+    return {'followers': int(followers.strip().replace(',','')), 'following': int(following.strip().replace(',',''))}
 
   
   
