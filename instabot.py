@@ -9,7 +9,8 @@ from constants import *
 
 class Instabot:
 
-  def __init__(self):
+  # data collection can be skipped if following.txt has all the account following info
+  def __init__(self, skipDataCollection = False):
     self.accountDetails = accountDetails()
     self.isLoggedIn = False
     self.session = requests.Session()
@@ -17,6 +18,15 @@ class Instabot:
     self.sleeptime = 10
     self.logger = Logger(toPrint = True)
     self.logger.log('------------ Starting up ------------')
+    if not skipDataCollection:
+      self.fetch_following()
+    else:
+      self.logger.log('Not fetching the loading data getting it from following.txt')
+      try:
+        self.following = json.loads(open('following.txt','r').read())
+      except:
+        self.following = {}
+
 
   def login(self):
     self.session.headers = {'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36'}
@@ -71,6 +81,7 @@ class Instabot:
         for d in data['edges']:
           accountObj = {'time': self.get_current_time(), 'status': 1}
           self.following[d['node']['id']] =  self.following.get(d['node']['id'], accountObj)
+          self.following[d['node']['id']]['status'] = 1
       self.logger.log('sleeping for {}'.format(self.sleeptime))
       time.sleep(self.sleeptime)
     open('following.txt','w').write(json.dumps(self.following))
@@ -80,8 +91,6 @@ class Instabot:
 
     if not (self.isLoggedIn or self.login()):
       return
-    
-    self.fetch_following()
 
     self.sleeptime = 10
     maxsleeptime = 160
@@ -95,7 +104,7 @@ class Instabot:
     for id in self.following.keys():
       followTime = self.parse_string_to_time(self.following[id]['time'])
       diffTime = currTime - followTime
-      if diffTime.seconds > timeDiff:
+      if diffTime.total_seconds() > timeDiff:
         accountsToUnfollow.append(id)
 
     for id in accountsToUnfollow:
@@ -197,17 +206,12 @@ class Instabot:
   def parse_string_to_time(self, timestamp):
     return datetime.strptime(timestamp, "%d/%m/%Y, %I:%M:%S %p")
 
-  def get_followers_following_info(self):
-    followers_following_req = self.session.get(BASE_URL + '/' + self.accountDetails.username)
-    if followers_following_req.status_code != 200:
-      logger.log("Couldn't fetch personal followers following info, status code {}, url {}".format(followers_following_req.status_code, followers_following_req.url))
-      return
-    followers_following_text = followers_following_req.text.lower()
-    followers_following_text = followers_following_text.split('<meta property="og:description" content="')[1]
-    followers = followers_following_text.split(' followers')[0]
-    following = followers_following_text.split('followers, ')[1].split(' following')[0]
-    return {'followers': int(followers.strip().replace(',','')), 'following': int(following.strip().replace(',',''))}
-
+  def get_total_following(self):
+    totalFollowing = 0
+    for id in self.following.keys():
+      if self.following[id]['status'] != -1:
+        totalFollowing = totalFollowing + 1
+    return totalFollowing
   
   
 
