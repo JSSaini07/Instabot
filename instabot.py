@@ -104,10 +104,12 @@ class Instabot:
     for id in self.following.keys():
       followTime = self.parse_string_to_time(self.following[id]['time'])
       diffTime = currTime - followTime
-      if diffTime.total_seconds() > timeDiff:
+      if self.following[id]['status'] != -1 and diffTime.total_seconds() > timeDiff:
         accountsToUnfollow.append(id)
 
-    for id in accountsToUnfollow:
+    currentIndex = 0
+    while currentIndex < len(accountsToUnfollow):
+      id = accountsToUnfollow[currentIndex]
       unfollow_req = try_unfollow(id)
       if unfollow_req.status_code != 200:
         self.sleeptime = min(self.sleeptime * 2, maxsleeptime)
@@ -117,6 +119,7 @@ class Instabot:
         self.logger.log('Successfully unfollowed id = {}, Decreasing sleeptime to {}'.format(id, self.sleeptime))
         self.following[id]['status'] = -1
         open('following.txt','w').write(json.dumps(self.following))
+        currentIndex = currentIndex + 1
       self.logger.log('sleeping for {}'.format(self.sleeptime))
       time.sleep(self.sleeptime)
     self.logger.log('Exhausted following list')
