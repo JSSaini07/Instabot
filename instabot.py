@@ -114,8 +114,9 @@ class Instabot:
       if unfollow_req.status_code != 200:
         if unfollow_req.status_code == 400:
           currentIndex = currentIndex + 1
-        self.sleeptime = min(self.sleeptime * 2, maxsleeptime)
-        self.logger.log('Error: Status {} Increasing sleeptime to {}, could not unfollow id = {}'.format(unfollow_req.status_code, self.sleeptime, id))
+        else:
+          self.sleeptime = min(self.sleeptime * 2, maxsleeptime)
+          self.logger.log('Error: Status {} Increasing sleeptime to {}, could not unfollow id = {}'.format(unfollow_req.status_code, self.sleeptime, id))
       else:
         self.sleeptime = max(10, self.sleeptime/2)
         self.logger.log('Successfully unfollowed id = {}, Decreasing sleeptime to {}'.format(id, self.sleeptime))
